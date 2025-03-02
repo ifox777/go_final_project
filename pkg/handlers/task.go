@@ -3,10 +3,10 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
-	"go-final/pkg/scheduler"
 	"net/http"
 	"time"
+
+	"go-final/pkg/scheduler"
 )
 
 type TaskRequest struct {
@@ -26,37 +26,25 @@ type SuccessResponse struct {
 
 func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type",
-			"application/json; charset=UTF-8")
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Method Not Allowed"})
-			if err != nil {
-				return
-			}
-
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Method not allowed"})
 			return
 		}
 
 		var req TaskRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid JSON"})
-			if err != nil {
-				return
-			}
-
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid JSON format"})
 			return
 		}
 
-		//валидация заголовка
+		// Валидация обязательного заголовка
 		if req.Title == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Title is required"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Title is required"})
 			return
 		}
 
@@ -70,10 +58,7 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 		parsedDate, err := time.Parse("20060102", req.Date)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid date format"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid date format"})
 			return
 		}
 
@@ -86,10 +71,7 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 				next, err := scheduler.NextDate(now, req.Date, req.Repeat)
 				if err != nil {
 					w.WriteHeader(http.StatusBadRequest)
-					err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-					if err != nil {
-						return
-					}
+					json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 					return
 				}
 				finalDate, _ = time.Parse("20060102", next)
@@ -100,17 +82,14 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 		if req.Repeat != "" {
 			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-				if err != nil {
-					return
-				}
+				json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 				return
 			}
 		}
 
-		//Добавление задачи в БД
-		res, err := db.Exec(`INSERT INTO tasks (date, title, comment, repeat) 
-VALUES (?, ?, ?, ?)`,
+		// Вставка в базу данных
+		res, err := db.Exec(
+			`INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`,
 			finalDate.Format("20060102"),
 			req.Title,
 			req.Comment,
@@ -118,31 +97,18 @@ VALUES (?, ?, ?, ?)`,
 		)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Database error"})
 			return
 		}
 
 		id, err := res.LastInsertId()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to get ID"})
+			return
 		}
+
 		w.WriteHeader(http.StatusCreated)
-		err = json.NewEncoder(w).Encode(SuccessResponse{ID: id})
-		if err != nil {
-			return
-		}
-		_, err = fmt.Fprint(w, `{"id":`, id, "}")
-		if err != nil {
-			return
-		}
-
+		json.NewEncoder(w).Encode(SuccessResponse{ID: id})
 	}
-
 }

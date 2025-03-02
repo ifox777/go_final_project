@@ -52,7 +52,7 @@ func InitDB() (*sql.DB, error) {
 
 	err = db.Ping()
 	if err != nil {
-		return nil, fmt.Errorf("ошибка подключения к базе: %v", err)
+		return fmt.Errorf("ошибка подключения к базе: %v", err)
 	}
 
 	//Создаем таблицу scheduler,если ее нет
@@ -69,12 +69,12 @@ func InitDB() (*sql.DB, error) {
 
 	_, err = db.Exec(query)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось создать таблицу: %v", err)
+		return fmt.Errorf("не удалось создать таблицу: %v", err)
 
 	}
 
 	log.Println("База данных успешно инициализирована")
 
-	return db, nil
+	return nil
 
 }

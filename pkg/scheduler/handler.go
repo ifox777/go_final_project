@@ -7,7 +7,7 @@ import (
 )
 
 // NexDateHandler обрабатывает запросы к  /api/nextdate
-func NexDateHandler(w http.ResponseWriter, r *http.Request) {
+func NextDateHandler(w http.ResponseWriter, r *http.Request) {
 	// Получаем парметры из запроса
 	nowStr := r.URL.Query().Get("now")
 	dateStr := r.URL.Query().Get("date")

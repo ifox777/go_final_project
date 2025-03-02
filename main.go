@@ -2,56 +2,52 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
+	"github.com/joho/godotenv"
 	"go-final/pkg/database"
 	"go-final/pkg/handlers"
 	"go-final/pkg/scheduler"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 
-	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const defaultPort = "7540"
-const webDir = "./web"
-const dbFile = "scheduler.db"
+const (
+	defaultPort = "7540"
+	webDir      = "./web"
+)
 
 var db *sql.DB
 
 func main() {
+	// Инициализация базы данных
 	var err error
 	db, err = database.InitDB()
 	if err != nil {
-		log.Fatalf("Ошибка при инициализации базы данных: %v\n", err)
+		log.Fatalf("Ошибка инициализации БД: %v", err)
 	}
 	defer db.Close()
 
-	err1 := godotenv.Load()
-	if err1 != nil {
-		log.Fatal("Ошибка загрузки .env файла")
+	// Загрузка переменных окружения
+	if err := godotenv.Load(); err != nil {
+		log.Print("Файл .env не найден")
 	}
 
+	// Настройка порта
 	port := os.Getenv("TODO_PORT")
 	if port == "" {
 		port = defaultPort
 	}
-	_, err = strconv.Atoi(port)
-	if err != nil {
-		fmt.Printf("Некорректный порт: %s\n", port)
-		return
-	}
-	// настройка маршрутов
+
+	// Настройка маршрутов
 	http.Handle("/", http.FileServer(http.Dir(webDir)))
-	http.HandleFunc("/api/nextdate", scheduler.NexDateHandler)
+	http.HandleFunc("/api/nextdate", scheduler.NextDateHandler)
 	http.HandleFunc("/api/task", handlers.AddTaskHandler(db))
 
-	//Запуск сервера
-	fmt.Printf("Сервер запущен на http://localhost:%s\n", port)
+	// Запуск сервера
+	log.Printf("Сервер запущен на порту %s", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
-		log.Printf("Ошибка при запуске сервера: %v\n", err)
+		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
-
 }
