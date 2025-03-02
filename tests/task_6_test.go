@@ -42,7 +42,7 @@ func TestTask(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, todo, m["id"])
-	//assert.Equal(t, task.date, m["date"])
+	assert.Equal(t, task.date, m["date"])
 	assert.Equal(t, task.title, m["title"])
 	assert.Equal(t, task.comment, m["comment"])
 	assert.Equal(t, task.repeat, m["repeat"])

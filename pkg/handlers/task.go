@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -47,139 +48,119 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Method Not Allowed"})
-			if err != nil {
-				return
-			}
+			respondWithError(w, http.StatusMethodNotAllowed, "Method Not Allowed")
 			return
 		}
 
 		var req TaskRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid JSON"})
-			if err != nil {
-				return
-			}
+			respondWithError(w, http.StatusBadRequest, "Invalid JSON")
 			return
 		}
 
-		// Валидация заголовка
 		if req.Title == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Title is required"})
-			if err != nil {
-				return
-			}
+			respondWithError(w, http.StatusBadRequest, "Title is required")
 			return
 		}
 
-		now := time.Now().UTC()
+		// Устанавливаем now как начало текущего дня (без времени)
+		now := time.Now().UTC().Truncate(24 * time.Hour)
 		var finalDate time.Time
 
-		// Обработка даты
-		if req.Date == "" || req.Date == "today" {
-			finalDate = now // Устанавливаем текущую дату
+		// Парсим дату или используем today
+		if req.Date == "" || req.Date == "today" || req.Date == now.Format("20060102") {
+			finalDate = now
 		} else {
-			parsedDate, err := time.Parse("20060102", req.Date)
+			parsedDate, err := time.ParseInLocation("20060102", req.Date, time.UTC)
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid date format"})
+				respondWithError(w, http.StatusBadRequest, "Invalid date format")
 				return
 			}
+			parsedDate = parsedDate.Truncate(24 * time.Hour) // Обрезаем время
 			finalDate = parsedDate
 
-		}
-
-		log.Printf("Initial final date: %s, %s", finalDate.Format("20060102"), req.Title)
-
-		// Коррекция даты только если не "today"
-		if req.Date != "today" && finalDate.Before(now) {
-			if req.Repeat == "" {
-				finalDate = now
-			} else {
-				next, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat)
-				if err != nil {
-					w.WriteHeader(http.StatusBadRequest)
-					_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-					return
+			// Коррекция только для дат в прошлом (сравниваем как даты без времени)
+			if finalDate.Before(now) {
+				if req.Repeat == "" {
+					finalDate = now
+				} else {
+					next, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat)
+					if err != nil {
+						respondWithError(w, http.StatusBadRequest, err.Error())
+						return
+					}
+					finalDate, _ = time.ParseInLocation("20060102", next, time.UTC)
 				}
-				finalDate, _ = time.Parse("20060102", next)
 			}
-		} else if req.Date == "today" {
-			finalDate = now
 		}
 
-		log.Printf("Corrected final date: %s, %s", finalDate.Format("20060102"), req.Title)
-
-		// Проверка правила повторения (только если дата не "today")
-		if req.Repeat != "" && req.Date != "today" {
+		// Валидация правила повтора (только если дата не today/current)
+		if req.Repeat != "" && req.Date != "today" && req.Date != now.Format("20060102") {
 			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+				respondWithError(w, http.StatusBadRequest, err.Error())
 				return
 			}
-		} else if req.Date == "today" {
-			finalDate = now
 		}
 
-		log.Printf("Final date after repeat check: %s, %s", finalDate.Format("20060102"), req.Title)
-
-		// Добавление задачи в БД
-		res, err := db.Exec(`INSERT INTO scheduler (date, title, comment, repeat) 
-VALUES (?, ?, ?, ?)`,
+		// Вставка в БД
+		res, err := db.Exec(
+			`INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`,
 			finalDate.Format("20060102"),
 			req.Title,
 			req.Comment,
 			req.Repeat,
 		)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-			if err != nil {
-				return
-			}
+			respondWithError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		id, err := res.LastInsertId()
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-			if err != nil {
-				return
-			}
-		}
-		w.WriteHeader(http.StatusCreated)
-		err = json.NewEncoder(w).Encode(SuccessResponse{ID: id})
-		if err != nil {
-			return
-		}
+		id, _ := res.LastInsertId()
+		respondWithSuccess(w, http.StatusCreated, id)
 	}
+}
+
+// Вспомогательные функции для ответов
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: message})
+}
+
+func respondWithSuccess(w http.ResponseWriter, code int, id int64) {
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(SuccessResponse{ID: id})
 }
 
 func GetTasksHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.Header().Set("Content-Type", "application/json")
+
 		search := r.URL.Query().Get("search")
 		var tasks []DBTask
 		var err error
-		ctx := r.Context()
 
-		query := `SELECT id, date, title, comment, repeat FROM scheduler WHERE 1=1`
+		query := "SELECT id, date, title, comment, repeat FROM scheduler"
 		args := []interface{}{}
+		whereAdded := false
 		limit := 50
 
 		if search != "" {
-			if date, err := time.Parse("20060102", search); err == nil {
-				//Поиск по дате
+			// Пытаемся распарсить как дату DD.MM.YYYY
+			if date, err := time.Parse("02.01.2006", search); err == nil {
 				query += " WHERE date = ?"
 				args = append(args, date.Format("20060102"))
+				whereAdded = true
 			} else {
-				//ПОиск по подстройке
-				query += " WHERE title LIKE ? OR comment LIKE ?"
+				// Экранируем специальные символы для LIKE
+				search = strings.ReplaceAll(search, "%", "\\%")
+				search = strings.ReplaceAll(search, "_", "\\_")
 				searchTerm := "%" + search + "%"
+
+				if whereAdded {
+					query += " AND (title LIKE ? OR comment LIKE ?)"
+				} else {
+					query += " WHERE (title LIKE ? OR comment LIKE ?)"
+				}
 				args = append(args, searchTerm, searchTerm)
 			}
 		}
@@ -187,34 +168,36 @@ func GetTasksHandler(db *sql.DB) http.HandlerFunc {
 		query += " ORDER BY date LIMIT ?"
 		args = append(args, limit)
 
-		rows, err := db.QueryContext(ctx, query, args...)
+		// Логирование для отладки
+		log.Printf("Executing query: %s\nArgs: %v", query, args)
 
+		rows, err := db.QueryContext(r.Context(), query, args...)
 		if err != nil {
-			handleError(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Database error: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal server error"})
 			return
 		}
-		defer func(rows *sql.Rows) {
-			err := rows.Close()
-			if err != nil {
-
-			}
-		}(rows)
+		defer rows.Close()
 
 		for rows.Next() {
 			var task DBTask
 			if err := rows.Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat); err != nil {
-				handleError(w, "Internal Server Error", http.StatusInternalServerError)
+				log.Printf("Row scan error: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal server error"})
 				return
 			}
 			tasks = append(tasks, task)
 		}
 
 		if err := rows.Err(); err != nil {
-			handleError(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Rows error: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal server error"})
 			return
 		}
 
-		// Преобразование данных в JSONTask
 		jsonTasks := make([]JSONTask, 0, len(tasks))
 		for _, task := range tasks {
 			jsonTasks = append(jsonTasks, JSONTask{
@@ -233,54 +216,37 @@ func GetTasksHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
-			handleError(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("JSON encode error: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-
-	}
-}
-
-func handleError(w http.ResponseWriter, message string, statusCode int) {
-	w.WriteHeader(statusCode)
-	err := json.NewEncoder(w).Encode(ErrorResponse{Error: message})
-	if err != nil {
-		return
 	}
 }
 
 // GET /api/task
 func GetTaskHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.Header().Set("Content-Type", "application/json")
 
 		id := r.URL.Query().Get("id")
 		if id == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Не указан ID задачи"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Не указан идентификатор"})
 			return
 		}
 
 		var task DBTask
-		err := db.QueryRowContext(r.Context(), "SELECT id,"+
-			" date, title, comment, repeat FROM scheduler WHERE id = ?",
-			id).Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
+		err := db.QueryRowContext(r.Context(),
+			"SELECT id, date, title, comment, repeat FROM scheduler WHERE id = ?", id).
+			Scan(&task.ID, &task.Date, &task.Title, &task.Comment, &task.Repeat)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
 				w.WriteHeader(http.StatusNotFound)
-				err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Задача не найдена"})
-				if err != nil {
-					return
-				}
+				json.NewEncoder(w).Encode(ErrorResponse{Error: "Задача не найдена"})
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal Server Error"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal server error"})
 			return
 		}
 
@@ -291,7 +257,6 @@ func GetTaskHandler(db *sql.DB) http.HandlerFunc {
 			Comment: task.Comment,
 			Repeat:  task.Repeat,
 		})
-
 	}
 }
 
