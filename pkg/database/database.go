@@ -21,7 +21,7 @@ func getDBPath() string {
 }
 
 // InitDB проверяет наличие фалйла DB и создает его при отстувии
-func InitDB() error {
+func InitDB() (*sql.DB, error) {
 	//Проверяем существование файла базы данных
 	dbFile := getDBPath()
 	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
@@ -30,18 +30,18 @@ func InitDB() error {
 		//Сощдаем фафлй базы данных
 		file, err := os.Create(dbFile)
 		if err != nil {
-			return fmt.Errorf("не удалось создать файл базы данных: %v", err)
+			return nil, fmt.Errorf("не удалось создать файл базы данных: %v", err)
 		}
 		err = file.Close()
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	//Открываем базу данных
 	db, err := sql.Open("sqlite3", dbFile)
 	if err != nil {
-		return fmt.Errorf("не удалось открыть базу данных: %v", err)
+		return nil, fmt.Errorf("не удалось открыть базу данных: %v", err)
 	}
 	defer func(db *sql.DB) {
 		err := db.Close()
@@ -49,6 +49,11 @@ func InitDB() error {
 			log.Printf("не удалось закрыть базу данных: %v", err)
 		}
 	}(db)
+
+	err = db.Ping()
+	if err != nil {
+		return nil, fmt.Errorf("ошибка подключения к базе: %v", err)
+	}
 
 	//Создаем таблицу scheduler,если ее нет
 	query := `
@@ -64,12 +69,12 @@ func InitDB() error {
 
 	_, err = db.Exec(query)
 	if err != nil {
-		return fmt.Errorf("не удалось создать таблицу: %v", err)
+		return nil, fmt.Errorf("не удалось создать таблицу: %v", err)
 
 	}
 
 	log.Println("База данных успешно инициализирована")
 
-	return nil
+	return db, nil
 
 }
