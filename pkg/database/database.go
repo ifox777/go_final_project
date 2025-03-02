@@ -24,35 +24,35 @@ func getDBPath() string {
 func InitDB() (*sql.DB, error) {
 	//Проверяем существование файла базы данных
 	dbFile := getDBPath()
-	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
-		log.Println("Файл базы дпнных не найден. Создаем новый файл...")
-
-		//Сощдаем фафлй базы данных
-		file, err := os.Create(dbFile)
-		if err != nil {
-			return nil, fmt.Errorf("не удалось создать файл базы данных: %v", err)
-		}
-		err = file.Close()
-		if err != nil {
-			return nil, err
-		}
-	}
+	//if _, err := os.Stat(dbFile); os.IsNotExist(err) {
+	//	log.Println("Файл базы дпнных не найден. Создаем новый файл...")
+	//
+	//	//Сощдаем фафлй базы данных
+	//	file, err := os.Create(dbFile)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("не удалось создать файл базы данных: %v", err)
+	//	}
+	//	err = file.Close()
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//}
 
 	//Открываем базу данных
 	db, err := sql.Open("sqlite3", dbFile)
 	if err != nil {
 		return nil, fmt.Errorf("не удалось открыть базу данных: %v", err)
 	}
-	defer func(db *sql.DB) {
-		err := db.Close()
-		if err != nil {
-			log.Printf("не удалось закрыть базу данных: %v", err)
-		}
-	}(db)
+	//defer func(db *sql.DB) {
+	//	err := db.Close()
+	//	if err != nil {
+	//		log.Printf("не удалось закрыть базу данных: %v", err)
+	//	}
+	//}(db)
 
 	err = db.Ping()
 	if err != nil {
-		return fmt.Errorf("ошибка подключения к базе: %v", err)
+		return nil, fmt.Errorf("ошибка подключения к базе: %v", err)
 	}
 
 	//Создаем таблицу scheduler,если ее нет
@@ -69,12 +69,12 @@ func InitDB() (*sql.DB, error) {
 
 	_, err = db.Exec(query)
 	if err != nil {
-		return fmt.Errorf("не удалось создать таблицу: %v", err)
+		return nil, fmt.Errorf("не удалось создать таблицу: %v", err)
 
 	}
 
 	log.Println("База данных успешно инициализирована")
 
-	return nil
+	return db, nil
 
 }
