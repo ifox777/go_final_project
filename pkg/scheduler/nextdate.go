@@ -26,7 +26,7 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 
 		days, err := strconv.Atoi(parts[1])
 		if err != nil || days < 1 || days > 400 {
-			return "", errors.New("Неверный формат повторения: ожидается 'd n', где n - число от 1 до 400")
+			return "", errors.New("Неверный форматgit pull origin повторения: ожидается 'd n', где n - число от 1 до 400")
 		}
 
 		// Добавляем количество дней, пока они не превысили now
