@@ -383,7 +383,6 @@ func UpdateTaskHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// handlers/task.go
 func MarkDoneHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -457,6 +456,7 @@ func MarkDoneHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// Удаление задачи
 func DeleteTaskHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
