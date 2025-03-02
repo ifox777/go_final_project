@@ -24,15 +24,18 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 
 		days, err := strconv.Atoi(parts[1])
 		if err != nil || days < 1 || days > 400 {
-			return "", errors.New("Неверное значение интервала дней")
+			return "", errors.New("неверное значение интервала дней")
 		}
 
-		// Всегда добавляем интервал хотя бы один раз
-		parsedDate = parsedDate.AddDate(0, 0, days)
-		// Продолжаем добавлять, пока не превысим now
-		for !parsedDate.After(now) {
-			parsedDate = parsedDate.AddDate(0, 0, days)
+		// Рассчитываем следующую дату
+		nextDate := parsedDate
+		for {
+			nextDate = nextDate.AddDate(0, 0, days)
+			if nextDate.After(now) {
+				break
+			}
 		}
+		return nextDate.Format("20060102"), nil
 
 	case repeat == "y":
 		// Всегда добавляем год хотя бы один раз
@@ -64,8 +67,8 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 
 	case strings.HasPrefix(repeat, "m "):
 		parts := strings.Split(repeat, " ")
-		if len(parts) < 1 {
-			return "", errors.New("Неверный формат m")
+		if len(parts) < 2 {
+			return "", errors.New("неверный формат m")
 		}
 
 		daysOfMonth, months, err := parseDaysAndMonths(parts[1:])

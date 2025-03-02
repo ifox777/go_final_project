@@ -89,6 +89,7 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			finalDate = parsedDate
+
 		}
 
 		log.Printf("Initial final date: %s, %s", finalDate.Format("20060102"), req.Title)
@@ -297,72 +298,61 @@ func GetTaskHandler(db *sql.DB) http.HandlerFunc {
 // PUT api/task
 func UpdateTaskHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.Header().Set("Content-Type", "application/json")
 
 		var req TaskRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid JSON"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid JSON"})
 			return
 		}
 
+		// Валидация ID
 		if req.ID == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Не указан ID задачи"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Не указан идентификатор"})
 			return
 		}
 
-		//Валидация данных при обновлении задачи
+		// Валидация заголовка
 		if req.Title == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Не указан заголовок задачи"})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "Title is required"})
 			return
 		}
 
+		// Валидация даты
 		now := time.Now().UTC()
 		var finalDate time.Time
-
-		// Обработка даты
-		if req.Date != "" || req.Date == "today" {
-			finalDate = now
-		} else {
-			parsedDate, err := time.Parse("20060102", req.Date)
-			if err != nil {
+		if req.Date != "" && req.Date != "today" {
+			if _, err := time.Parse("20060102", req.Date); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Некорректная дата"})
-				if err != nil {
-					return
-				}
+				json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid date format"})
+				return
+			}
+			parsedDate, _ := time.Parse("20060102", req.Date)
+			if parsedDate.Before(now) && req.Repeat == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(ErrorResponse{Error: "Дата не может быть в прошлом"})
 				return
 			}
 			finalDate = parsedDate
+		} else {
+			finalDate = now
 		}
 
-		// Проверка правила повторения (только если дата не "today")
-		if req.Repeat != "" && req.Date != "today" {
-			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"),
-				req.Repeat); err != nil {
+		// Валидация правила повторения
+		if req.Repeat != "" {
+			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
-				err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-				if err != nil {
-					return
-				}
+				json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 				return
 			}
 		}
 
 		// Обновление задачи в БД
-		res, err := db.Exec(`UPDATE scheduler SET date = ?, title = ?, 
-                     comment = ?, repeat = ? WHERE id = ?`,
+		res, err := db.ExecContext(r.Context(),
+			"UPDATE scheduler SET date = ?, title = ?, comment = ?, repeat = ? WHERE id = ?",
 			finalDate.Format("20060102"),
 			req.Title,
 			req.Comment,
@@ -425,36 +415,45 @@ func MarkDoneHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		now := time.Now().UTC()
-		var result sql.Result
+		//var result sql.Result
 
 		if task.Repeat != "" {
-			next, err := scheduler.NextDate(now, task.Date, task.Repeat)
+			parsedDate, _ := time.Parse("20060102", task.Date)
+			next, err := scheduler.NextDate(now, parsedDate.Format("20060102"), task.Repeat)
 			if err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 				return
 			}
-			result, err = db.ExecContext(r.Context(),
-				"UPDATE scheduler SET date = ? WHERE id = ?", next, id)
+
+			// Обновляем дату следующего выполнения
+			_, err = db.ExecContext(r.Context(),
+				"UPDATE scheduler SET date = ? WHERE id = ?",
+				next,
+				id)
+
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(ErrorResponse{Error: "Ошибка сервера"})
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(struct{}{})
 		} else {
-			result, err = db.ExecContext(r.Context(),
+			// Удаляем одноразовую задачу
+			_, err := db.ExecContext(r.Context(),
 				"DELETE FROM scheduler WHERE id = ?", id)
-		}
 
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "Ошибка сервера"})
-			return
-		}
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(ErrorResponse{Error: "Ошибка сервера"})
+				return
+			}
 
-		rows, _ := result.RowsAffected()
-		if rows == 0 {
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "Задача не найдена"})
-			return
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(struct{}{})
 		}
-
-		json.NewEncoder(w).Encode(struct{}{})
 	}
 }
 
