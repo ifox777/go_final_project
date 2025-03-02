@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/joho/godotenv"
-	_ "github.com/mattn/go-sqlite3"
 	"go-final/pkg/database"
+	"go-final/pkg/scheduler"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const defaultPort = "7540"
@@ -34,8 +36,9 @@ func main() {
 		fmt.Printf("Некорректный порт: %s\n", port)
 		return
 	}
-
+	// настройка маршрутов
 	http.Handle("/", http.FileServer(http.Dir(webDir)))
+	http.HandleFunc("/api/nextdate", scheduler.NexDateHandler)
 
 	//Запуск сервера
 	fmt.Printf("Сервер запущен на http://localhost:%s\n", port)
