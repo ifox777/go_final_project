@@ -14,9 +14,7 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Неверный формат даты %d", date)
 	}
-	//if date == now.Format("20060102") {
-	//	return date, nil
-	//}
+
 	switch {
 	case strings.HasPrefix(repeat, "d "):
 		parts := strings.Split(repeat, " ")

@@ -48,35 +48,35 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 		if r.Method != http.MethodPost {
-			respondWithError(w, http.StatusMethodNotAllowed, "Method Not Allowed")
+			respondWithError(w, http.StatusMethodNotAllowed, "Метод запрещен")
 			return
 		}
 
 		var req TaskRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid JSON")
+			respondWithError(w, http.StatusBadRequest, "Неправильный формат запроса")
 			return
 		}
 
 		if req.Title == "" {
-			respondWithError(w, http.StatusBadRequest, "Title is required")
+			respondWithError(w, http.StatusBadRequest, "Заголовок задачи не может быть пустым")
 			return
 		}
 
 		// Устанавливаем now как начало текущего дня (без времени)
-		now := time.Now().UTC().Truncate(24 * time.Hour)
+		now := time.Now().Local().Truncate(24 * time.Hour)
 		var finalDate time.Time
 
 		// Парсим дату или используем today
 		if req.Date == "" || req.Date == "today" || req.Date == now.Format("20060102") {
 			finalDate = now
 		} else {
-			parsedDate, err := time.ParseInLocation("20060102", req.Date, time.UTC)
+			parsedDate, err := time.ParseInLocation("20060102", req.Date, time.Local)
 			if err != nil {
 				respondWithError(w, http.StatusBadRequest, "Invalid date format")
 				return
 			}
-			parsedDate = parsedDate.Truncate(24 * time.Hour) // Обрезаем время
+			parsedDate = parsedDate
 			finalDate = parsedDate
 
 			// Коррекция только для дат в прошлом (сравниваем как даты без времени)
@@ -89,12 +89,12 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 						respondWithError(w, http.StatusBadRequest, err.Error())
 						return
 					}
-					finalDate, _ = time.ParseInLocation("20060102", next, time.UTC)
+					finalDate, _ = time.ParseInLocation("20060102", next, time.Local)
 				}
 			}
 		}
 
-		// Валидация правила повтора (только если дата не today/current)
+		// Валидация правила повтора (только если дата не today/now)
 		if req.Repeat != "" && req.Date != "today" && req.Date != now.Format("20060102") {
 			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
 				respondWithError(w, http.StatusBadRequest, err.Error())
@@ -102,7 +102,7 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Вставка в БД
+		//Вставляем задачу в базу данных
 		res, err := db.Exec(
 			`INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`,
 			finalDate.Format("20060102"),
@@ -120,17 +120,7 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// Вспомогательные функции для ответов
-func respondWithError(w http.ResponseWriter, code int, message string) {
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: message})
-}
-
-func respondWithSuccess(w http.ResponseWriter, code int, id int64) {
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(SuccessResponse{ID: id})
-}
-
+// GetTasksHandler Получение списка задач
 func GetTasksHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -168,12 +158,12 @@ func GetTasksHandler(db *sql.DB) http.HandlerFunc {
 		query += " ORDER BY date LIMIT ?"
 		args = append(args, limit)
 
-		// Логирование для отладки
-		log.Printf("Executing query: %s\nArgs: %v", query, args)
+		//// Логирование для отладки
+		//log.Printf("Executing query: %s\nArgs: %v", query, args)
 
 		rows, err := db.QueryContext(r.Context(), query, args...)
 		if err != nil {
-			log.Printf("Database error: %v", err)
+			log.Printf("Ошибка выполнения запроса: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(ErrorResponse{Error: "Internal server error"})
 			return
@@ -279,38 +269,44 @@ func UpdateTaskHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Валидация заголовка
 		if req.Title == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "Title is required"})
+			respondWithError(w, http.StatusBadRequest, "Заголовок задачи не может быть пустым")
 			return
 		}
 
-		// Валидация даты
-		now := time.Now().UTC()
+		// Устанавливаем now как начало текущего дня (без времени)
+		now := time.Now().Local().Truncate(24 * time.Hour)
 		var finalDate time.Time
-		if req.Date != "" && req.Date != "today" {
-			if _, err := time.Parse("20060102", req.Date); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid date format"})
-				return
-			}
-			parsedDate, _ := time.Parse("20060102", req.Date)
-			if parsedDate.Before(now) && req.Repeat == "" {
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(ErrorResponse{Error: "Дата не может быть в прошлом"})
-				return
-			}
-			finalDate = parsedDate
-		} else {
+
+		// Парсим дату или используем today
+		if req.Date == "" || req.Date == "today" || req.Date == now.Format("20060102") {
 			finalDate = now
+		} else {
+			parsedDate, err := time.ParseInLocation("20060102", req.Date, time.Local)
+			if err != nil {
+				respondWithError(w, http.StatusBadRequest, "Invalid date format")
+				return
+			}
+			parsedDate = parsedDate
+			finalDate = parsedDate
+
+			// Коррекция только для дат в прошлом (сравниваем как даты без времени)
+			if finalDate.Before(now) {
+				if req.Repeat == "" {
+					finalDate = now
+				} else {
+					next, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat)
+					if err != nil {
+					}
+					finalDate, _ = time.ParseInLocation("20060102", next, time.Local)
+				}
+			}
 		}
 
-		// Валидация правила повторения
-		if req.Repeat != "" {
+		// Валидация правила повтора (только если дата не today/now)
+		if req.Repeat != "" && req.Date != "today" && req.Date != now.Format("20060102") {
 			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+				respondWithError(w, http.StatusBadRequest, err.Error())
 				return
 			}
 		}
