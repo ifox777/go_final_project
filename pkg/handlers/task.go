@@ -58,51 +58,13 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if req.Title == "" {
-			respondWithError(w, http.StatusBadRequest, "Заголовок задачи не может быть пустым")
+		now := time.Now().Local().Truncate(24 * time.Hour)
+		finalDate, err := ValidateAndProcessTaskRequest(&req, now)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		// Устанавливаем now как начало текущего дня (без времени)
-		now := time.Now().Local().Truncate(24 * time.Hour)
-		var finalDate time.Time
-
-		// Парсим дату или используем today
-		if req.Date == "" || req.Date == "today" || req.Date == now.Format("20060102") {
-			finalDate = now
-		} else {
-			parsedDate, err := time.ParseInLocation("20060102", req.Date, time.Local)
-			if err != nil {
-				respondWithError(w, http.StatusBadRequest, "Invalid date format")
-				return
-			}
-			parsedDate = parsedDate
-			finalDate = parsedDate
-
-			// Коррекция только для дат в прошлом (сравниваем как даты без времени)
-			if finalDate.Before(now) {
-				if req.Repeat == "" {
-					finalDate = now
-				} else {
-					next, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat)
-					if err != nil {
-						respondWithError(w, http.StatusBadRequest, err.Error())
-						return
-					}
-					finalDate, _ = time.ParseInLocation("20060102", next, time.Local)
-				}
-			}
-		}
-
-		// Валидация правила повтора (только если дата не today/now)
-		if req.Repeat != "" && req.Date != "today" && req.Date != now.Format("20060102") {
-			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
-				respondWithError(w, http.StatusBadRequest, err.Error())
-				return
-			}
-		}
-
-		//Вставляем задачу в базу данных
 		res, err := db.Exec(
 			`INSERT INTO scheduler (date, title, comment, repeat) VALUES (?, ?, ?, ?)`,
 			finalDate.Format("20060102"),
@@ -262,56 +224,18 @@ func UpdateTaskHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Валидация ID
 		if req.ID == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "Не указан идентификатор"})
+			respondWithError(w, http.StatusBadRequest, "Не указан идентификатор")
 			return
 		}
 
-		if req.Title == "" {
-			respondWithError(w, http.StatusBadRequest, "Заголовок задачи не может быть пустым")
-			return
-		}
-
-		// Устанавливаем now как начало текущего дня (без времени)
 		now := time.Now().Local().Truncate(24 * time.Hour)
-		var finalDate time.Time
-
-		// Парсим дату или используем today
-		if req.Date == "" || req.Date == "today" || req.Date == now.Format("20060102") {
-			finalDate = now
-		} else {
-			parsedDate, err := time.ParseInLocation("20060102", req.Date, time.Local)
-			if err != nil {
-				respondWithError(w, http.StatusBadRequest, "Invalid date format")
-				return
-			}
-			parsedDate = parsedDate
-			finalDate = parsedDate
-
-			// Коррекция только для дат в прошлом (сравниваем как даты без времени)
-			if finalDate.Before(now) {
-				if req.Repeat == "" {
-					finalDate = now
-				} else {
-					next, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat)
-					if err != nil {
-					}
-					finalDate, _ = time.ParseInLocation("20060102", next, time.Local)
-				}
-			}
+		finalDate, err := ValidateAndProcessTaskRequest(&req, now)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, err.Error())
+			return
 		}
 
-		// Валидация правила повтора (только если дата не today/now)
-		if req.Repeat != "" && req.Date != "today" && req.Date != now.Format("20060102") {
-			if _, err := scheduler.NextDate(now, finalDate.Format("20060102"), req.Repeat); err != nil {
-				respondWithError(w, http.StatusBadRequest, err.Error())
-				return
-			}
-		}
-
-		// Обновление задачи в БД
 		res, err := db.ExecContext(r.Context(),
 			"UPDATE scheduler SET date = ?, title = ?, comment = ?, repeat = ? WHERE id = ?",
 			finalDate.Format("20060102"),
@@ -322,28 +246,19 @@ func UpdateTaskHandler(db *sql.DB) http.HandlerFunc {
 
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-			if err != nil {
-				return
-			}
+			json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 			return
 		}
 
-		rowsAffected, err := res.RowsAffected()
+		rowsAffected, _ := res.RowsAffected()
 		if rowsAffected == 0 {
-			w.WriteHeader(http.StatusNotFound)
-			err := json.NewEncoder(w).Encode(ErrorResponse{Error: "Задача не найдена"})
-			if err != nil {
-				return
-			}
+			respondWithError(w, http.StatusNotFound, "Задача не найдена")
 			return
 		}
 
 		json.NewEncoder(w).Encode(struct{}{})
-
 	}
 }
-
 func MarkDoneHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
