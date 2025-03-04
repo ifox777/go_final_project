@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"go-final/pkg/database"
 	"go-final/pkg/handlers"
-	"go-final/pkg/middleware"
 	"go-final/pkg/scheduler"
 	"log"
 	"net/http"
@@ -46,13 +45,35 @@ func main() {
 		return
 	}
 	// настройка маршрутов
+	//http.HandleFunc("/api/signin", handlers.SignInHandler)
+	//http.Handle("/", http.FileServer(http.Dir(webDir)))
+	//http.HandleFunc("/api/nextdate", scheduler.NextDateHandler)
+	////http.HandleFunc("/api/task", handlers.AddTaskHandler(db))
+	//http.HandleFunc("/api/tasks", middleware.AuthMiddleware(handlers.GetTasksHandler(db)))
+	//http.HandleFunc("/api/task/done", middleware.AuthMiddleware(handlers.MarkDoneHandler(db))) // POST
+	//http.HandleFunc("/api/task", middleware.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	//	switch r.Method {
+	//	case http.MethodPost:
+	//		handlers.AddTaskHandler(db)(w, r) // Добавление
+	//	case http.MethodGet:
+	//		handlers.GetTaskHandler(db)(w, r) // Получение
+	//	case http.MethodPut:
+	//		handlers.UpdateTaskHandler(db)(w, r) // Обновление
+	//	case http.MethodDelete:
+	//		handlers.DeleteTaskHandler(db)(w, r)
+	//	default:
+	//		w.WriteHeader(http.StatusMethodNotAllowed)
+	//		json.NewEncoder(w).Encode(handlers.ErrorResponse{Error: "Method Not Allowed"})
+	//	}
+	//}))
+
 	http.HandleFunc("/api/signin", handlers.SignInHandler)
 	http.Handle("/", http.FileServer(http.Dir(webDir)))
 	http.HandleFunc("/api/nextdate", scheduler.NextDateHandler)
 	//http.HandleFunc("/api/task", handlers.AddTaskHandler(db))
-	http.HandleFunc("/api/tasks", middleware.AuthMiddleware(handlers.GetTasksHandler(db)))
-	http.HandleFunc("/api/task/done", middleware.AuthMiddleware(handlers.MarkDoneHandler(db))) // POST
-	http.HandleFunc("/api/task", middleware.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/tasks", handlers.GetTasksHandler(db))
+	http.HandleFunc("/api/task/done", handlers.MarkDoneHandler(db)) // POST
+	http.HandleFunc("/api/task", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			handlers.AddTaskHandler(db)(w, r) // Добавление
@@ -66,8 +87,7 @@ func main() {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			json.NewEncoder(w).Encode(handlers.ErrorResponse{Error: "Method Not Allowed"})
 		}
-	}))
-
+	})
 	//Запуск сервера
 	fmt.Printf("Сервер запущен на http://localhost:%s\n", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
