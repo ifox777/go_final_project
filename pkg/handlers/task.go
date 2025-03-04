@@ -107,6 +107,8 @@ func GetTasksHandler(db *sql.DB) http.HandlerFunc {
 				search = strings.ReplaceAll(search, "%", "\\%")
 				search = strings.ReplaceAll(search, "_", "\\_")
 				searchTerm := "%" + search + "%"
+				query += " WHERE (title LIKE ? OR comment LIKE ?)"
+				args = append(args, searchTerm, searchTerm)
 
 				if whereAdded {
 					query += " AND (title LIKE ? OR comment LIKE ?)"

@@ -16,7 +16,7 @@ type SigninRequest struct {
 
 type SigninResponse struct {
 	Token string `json:"token,omitempty"`
-	Error string `json:"token,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 func SignInHandler(w http.ResponseWriter, r *http.Request) {
