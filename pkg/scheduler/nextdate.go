@@ -49,20 +49,20 @@ func NextDate(now time.Time, date string, repeat string) (string, error) {
 		parts := strings.Split(repeat, " ")
 		if len(parts) != 2 {
 			return "", errors.New("Неверный формат w")
+		}
 
-			daysOfWeek, err := parseDaysOfWeek(parts[1])
-			if err != nil {
-				return "", err
+		daysOfWeek, err := parseDaysOfWeek(parts[1])
+		if err != nil {
+			return "", err
+		}
+
+		// Начинаем поиск со следующего дня
+		parsedDate = parsedDate.AddDate(0, 0, 1)
+		for {
+			if parsedDate.After(now) && containsDayOfWeek(daysOfWeek, parsedDate.Weekday()) {
+				break
 			}
-
-			// Начинаем поиск со следующего дня
 			parsedDate = parsedDate.AddDate(0, 0, 1)
-			for {
-				if parsedDate.After(now) && containsDayOfWeek(daysOfWeek, parsedDate.Weekday()) {
-					break
-				}
-				parsedDate = parsedDate.AddDate(0, 0, 1)
-			}
 		}
 
 	case strings.HasPrefix(repeat, "m "):
