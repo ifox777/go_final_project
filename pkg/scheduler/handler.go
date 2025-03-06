@@ -34,7 +34,9 @@ func NextDateHandler(w http.ResponseWriter, r *http.Request) {
 
 // parseTime парсит время
 func parseTime(nowStr string) (time.Time, error) {
-	timeParse, err := time.Parse("20060102", nowStr)
-
-	return timeParse, err
+    if nowStr == "" {
+        return time.Now().UTC(), nil
+    }
+    timeParse, err := time.Parse("20060102", nowStr)
+    return timeParse, err
 }
