@@ -53,19 +53,6 @@ func AddTaskHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var req TaskRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid JSON")
-			return
-		}
-
-		if req.Title == "" {
-			respondWithError(w, http.StatusBadRequest, "Title is required")
-			return
-		}
-
-		// Устанавливаем now как начало текущего дня (без времени)
-		now := time.Now().UTC().Truncate(24 * time.Hour)
-		var finalDate time.Time
 
 		// Парсим дату или используем today
 		if req.Date == "" || req.Date == "today" || req.Date == now.Format("20060102") {
