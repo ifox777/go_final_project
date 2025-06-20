@@ -1,0 +1,15 @@
+# Владельцы по умолчанию для всего репозитория (опционально)
+* @ifox777 @errreway
+
+# Фронтенд: ifox777
+/frontend/ @ifox777
+
+# Бэкенд: errreway
+/backend/ @errreway
+
+# Критические файлы: оба пользователя
+Dockerfile @ifox777 @errreway
+.github/workflows/ @ifox777 @errreway
+
+# Тесты: если есть отдельная директория
+/tests/ @ifox777 @errreway
