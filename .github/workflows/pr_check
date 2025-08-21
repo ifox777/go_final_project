@@ -1,0 +1,36 @@
+name: PR Test Workflow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  simple-checks:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      run: sleep 3
+      
+    - name: Show current time
+      run: |
+        echo "Current time: $(date)"
+        sleep 3
+      
+    - name: Mock test step
+      run: |
+        echo "Running tests... (this is a mock)"
+        sleep 3
+      
+    - name: Mock lint step
+      run: |
+        echo "Running lint... (this is a mock)"
+        sleep 3
+      
+    - name: Show PR information
+      run: |
+        echo "PR Number: ${{ github.event.pull_request.number }}"
+        echo "PR Title: ${{ github.event.pull_request.title }}"
+        echo "Action: ${{ github.event.action }}"
+        sleep 3
